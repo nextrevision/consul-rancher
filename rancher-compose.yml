@@ -1,0 +1,45 @@
+.catalog:
+  name: "Consul"
+  version: "0.1.0"
+  description: |
+    Deploys a HA Consul cluster (3 nodes) with agents and registrator on all nodes
+  minimum_rancher_version: "v0.46.0"
+
+consul-lb:
+  scale: 1
+  load_balancer_config:
+    haproxy_config: {}
+  health_check:
+    port: 42
+    interval: 2000
+    unhealthy_threshold: 3
+    healthy_threshold: 2
+    response_timeout: 2000
+
+consul-server:
+  scale: 3
+  upgrade_strategy:
+    start_first: true
+  health_check:
+    port: 8500
+    interval: 2000
+    recreate_on_quorum_strategy_config:
+      quorum: 2
+    unhealthy_threshold: 3
+    strategy: recreateOnQuorum
+    request_line: GET /v1/status/leader HTTP/1.0
+    healthy_threshold: 2
+    response_timeout: 2000
+
+consul-data:
+  scale: 3
+
+consul-agent:
+  health_check:
+    port: 8500
+    interval: 10000
+    unhealthy_threshold: 6
+    strategy: recreate
+    request_line: GET /v1/status/leader HTTP/1.0
+    healthy_threshold: 3
+    response_timeout: 2000

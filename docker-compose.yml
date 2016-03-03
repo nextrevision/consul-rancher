@@ -1,0 +1,73 @@
+consul-lb:
+  image: rancher/load-balancer-service
+  expose:
+    - 8300:8300/tcp
+    - 8301:8301/tcp
+    - 8302:8302/tcp
+    - 8400:8400/tcp
+    - 8500:8500
+  links:
+    - consul-server:consul-server
+  tty: true
+  stdin_open: true
+  labels:
+    io.rancher.container.pull_image: always
+
+consul-server:
+  image: nextrevision/consul-rancher:develop
+  command: server
+  links:
+    - 'consul-lb:'
+  volumes_from:
+    - consul-data
+  tty: true
+  stdin_open: true
+  labels:
+    io.rancher.sidekicks: consul-data
+    io.rancher.container.pull_image: always
+    io.rancher.scheduler.affinity:container_soft_ne: consul-server
+
+consul-data:
+  image: nextrevision/consul-rancher:develop
+  entrypoint: /bin/true
+  links:
+    - 'consul-lb:'
+  volumes:
+    - /data
+  tty: true
+  stdin_open: true
+  labels:
+    io.rancher.container.pull_image: always
+    io.rancher.container.start_once: 'true'
+
+registrator:
+  image: gliderlabs/registrator:master
+  command: >
+    -retry-attempts 10 -retry-interval 5000
+    -resync 300 -ttl 300 -ttl-refresh 60
+    consul://localhost:8500
+  links:
+    - 'consul-lb:'
+  volumes:
+    - /var/run/docker.sock:/tmp/docker.sock
+  net: host
+  tty: true
+  stdin_open: true
+  privileged: true
+  labels:
+    io.rancher.scheduler.global: 'true'
+    io.rancher.sidekicks: consul-agent
+    io.rancher.container.pull_image: always
+
+consul-agent:
+  image: nextrevision/consul-rancher:develop
+  command: agent
+  ports:
+    - 8500:8500
+  links:
+    - 'consul-lb:'
+  tty: true
+  stdin_open: true
+  labels:
+    io.rancher.scheduler.global: 'true'
+    io.rancher.container.pull_image: always
