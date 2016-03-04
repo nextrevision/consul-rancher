@@ -46,7 +46,6 @@ consul-data:
 registrator:
   image: gliderlabs/registrator:latest
   command: >
-    -retry-attempts 10 -retry-interval 5000
     -resync 300 -ttl 300 -ttl-refresh 60
     consul://localhost:8500
   links:
