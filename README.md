@@ -1,5 +1,7 @@
 # consul-rancher
 
+[![](https://badge.imagelayers.io/nextrevision/consul-rancher:latest.svg)](https://imagelayers.io/?images=nextrevision/consul-rancher:latest 'Get your own badge on imagelayers.io')
+
 Uses [Rancher](https://rancher.com) to deploy a HA Consul cluster (3 nodes) with agents and registrator on all hosts in an environment.
 
 ## Deploying
