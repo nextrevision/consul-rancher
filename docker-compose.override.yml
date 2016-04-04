@@ -1,0 +1,6 @@
+consul-agent:
+  image: nextrevision/consul-rancher:develop
+consul-server:
+  image: nextrevision/consul-rancher:develop
+consul-data:
+  image: nextrevision/consul-rancher:develop

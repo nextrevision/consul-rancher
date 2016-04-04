@@ -1,13 +1,16 @@
 #!/bin/sh
 
+ACTION=${1:-agent}
+
 # wait for rancher-metadata
+echo "Waiting for rancher metadata..."
 sleep 5
 
 # wait for all hosts to come up before starting
+echo "Waiting for all containers to become available..."
 /bin/giddyup service wait scale --timeout 600
 
-ACTION=${1:-agent}
-ADVERTISE_IP=`curl -s http://rancher-metadata/latest/self/container/primary_ip`
+ADVERTISE_IP=`curl -s http://rancher-metadata/latest/self/host/agent_ip`
 STACK_NAME=`curl -s http://rancher-metadata/latest/self/stack/name`
 SERVERS=`/bin/giddyup ip stringify ${STACK_NAME}/consul-server | tr ',' ' '`
 SERVER_COUNT=`curl -s http://rancher-metadata/latest/self/service/scale`
@@ -33,7 +36,7 @@ wait_for_server() {
 }
 
 wait_for_leader() {
-  while [[ `curl -s http://consul-lb:8500/v1/status/leader` == "" ]]; do
+  while [[ `curl -s http://consul:8500/v1/status/leader` == "" ]]; do
     echo "Waiting for leader to come up..."
     sleep 10
   done
@@ -63,30 +66,27 @@ reset_raft() {
 }
 
 if [[ $ACTION == "server" ]]; then
-  CONSUL_CMD="${CONSUL_CMD} -server -ui-dir=/ui -bootstrap-expect ${SERVER_COUNT}"
   JOIN_CMD=$(/bin/giddyup ip stringify --delimiter " " --prefix "--join ")
-  if ! check_servers; then
-    echo "No leader could be found, checking if I should bootstrap..."
-    if /bin/giddyup leader check; then
-      echo "Going to bootstrap..."
-      CONSUL_CMD="${CONSUL_CMD}"
-    else
-      wait_for_server
-      echo "Member came up, attempting to join..."
-      CONSUL_CMD="${CONSUL_CMD} -rejoin ${JOIN_CMD}"
-    fi
+  CONSUL_CMD="${CONSUL_CMD} -server -ui-dir=/ui -bootstrap-expect ${SERVER_COUNT} -rejoin ${JOIN_CMD}"
+
+  if ! check_servers && ! /bin/giddyup leader check; then
+    "Waiting for bootstrap server to come up..."
+    wait_for_server
   else
     echo "Joining existing cluster with '${SERVERS}'..."
-    CONSUL_CMD="${CONSUL_CMD} -rejoin ${JOIN_CMD}"
   fi
-  echo "Backgrounding force-leave cleanup task"
+  echo "Backgrounding force-leave cleanup task..."
   force_cleanup &
+  echo "Resetting raft peers..."
   reset_raft
 else
+  CONSUL_CMD="${CONSUL_CMD} -rejoin -join consul"
+  echo "Waiting for a leader to be elected..."
   wait_for_leader
-  CONSUL_CMD="${CONSUL_CMD} -rejoin -join consul-lb"
+  echo "Resetting raft peers..."
   reset_raft
 fi
 
-echo "Starting consul as ${ACTION} with ${CONSUL_CMD}"
+echo "Starting consul as '${ACTION}' with command:"
+echo "  ${CONSUL_CMD}"
 exec $CONSUL_CMD
