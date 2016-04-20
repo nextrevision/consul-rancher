@@ -1,67 +1,68 @@
 consul:
   image: rancher/dns-service
   links:
-  - consul-server:consul-server
+    - consul-server:consul-server
+
 registrator:
+  image: gliderlabs/registrator:v6
+  command:
+    - -resync
+    - '300'
+    - -ttl
+    - '300'
+    - -ttl-refresh
+    - '60'
+    - consul://localhost:8500
+  net: host
+  privileged: true
+  tty: true
+  stdin_open: true
+  volumes:
+    - /var/run/docker.sock:/tmp/docker.sock
   labels:
+    io.rancher.container.dns: 'true'
     io.rancher.scheduler.global: 'true'
     io.rancher.container.pull_image: always
     io.rancher.container.hostname_override: container_name
-    io.rancher.container.dns: 'true'
-  command:
-  - -resync
-  - '300'
-  - -ttl
-  - '300'
-  - -ttl-refresh
-  - '60'
-  - consul://localhost:8500
-  tty: true
-  image: gliderlabs/registrator:v6
-  privileged: true
-  volumes:
-  - /var/run/docker.sock:/tmp/docker.sock
-  stdin_open: true
-  net: host
+  links:
+    - consul-agent:consul-agent
+
 consul-agent:
-  ports:
-  - 8500:8500/tcp
+  image: nextrevision/consul-rancher:latest
+  command: agent
+  net: host
+  tty: true
+  stdin_open: true
   labels:
+    io.rancher.container.dns: 'true'
     io.rancher.scheduler.global: 'true'
     io.rancher.container.pull_image: always
     io.rancher.container.hostname_override: container_name
     io.rancher.scheduler.affinity:container_label_ne: io.rancher.stack_service.name=consul-server
-  command:
-  - agent
-  tty: true
-	image: nextrevision/consul-rancher:latest
-  stdin_open: true
+  links:
+    - consul-server:consul-server
+
 consul-server:
-  ports:
-  - 8300:8300/tcp
-  - 8301:8301/tcp
-  - 8302:8302/tcp
-  - 8400:8400/tcp
-  - 8500:8500/tcp
-  - 8600:8600/tcp
+  image: nextrevision/consul-rancher:latest
+  command: server
+  net: host
+  tty: true
+  stdin_open: true
   labels:
+    io.rancher.container.dns: 'true'
     io.rancher.sidekicks: consul-data
     io.rancher.scheduler.affinity:container_label_ne: io.rancher.stack_service.name=consul-server
     io.rancher.container.hostname_override: container_name
-  command:
-  - server
-  tty: true
-	image: nextrevision/consul-rancher:latest
-  stdin_open: true
+
 consul-data:
+  image: nextrevision/consul-rancher:latest
+  hostname: consul-server
+  tty: true
+  stdin_open: true
+  entrypoint: /bin/true
+  volumes:
+    - /data
   labels:
+    io.rancher.container.dns: 'true'
     io.rancher.container.pull_image: always
     io.rancher.container.start_once: 'true'
-  tty: true
-  entrypoint:
-  - /bin/true
-  hostname: consul-server
-	image: nextrevision/consul-rancher:latest
-  volumes:
-  - /data
-  stdin_open: true

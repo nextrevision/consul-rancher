@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -x
 
 ACTION=${1:-agent}
 
@@ -6,31 +6,17 @@ ACTION=${1:-agent}
 echo "Waiting for rancher metadata..."
 sleep 5
 
-# wait for all hosts to come up before starting
-echo "Waiting for all containers to become available..."
-/bin/giddyup service wait scale --timeout 600
-
 ADVERTISE_IP=`curl -s http://rancher-metadata/latest/self/host/agent_ip`
-STACK_NAME=`curl -s http://rancher-metadata/latest/self/stack/name`
-SERVERS=`/bin/giddyup ip stringify ${STACK_NAME}/consul-server | tr ',' ' '`
-SERVER_COUNT=`curl -s http://rancher-metadata/latest/self/service/scale`
+SERVERS=`/bin/giddyup ip stringify consul/consul-server | tr ',' ' '`
+SCALE=`curl -s http://rancher-metadata/latest/services/consul-server/scale`
 
 CONSUL_CMD="/bin/consul agent -config-dir=/config -advertise=${ADVERTISE_IP}"
 
-check_servers() {
-  local rc=1
-  for s in ${SERVERS}; do
-    if [ `curl -w %{http_code} -s -o /dev/null http://${s}:8500/v1/status/leader` -eq 200 ]; then
-      rc=0
-      break
-    fi
-  done
-  return $rc
-}
-
-wait_for_server() {
-  while ! check_servers; do
-    echo "Waiting for a member in '${SERVERS}' to come up..."
+wait_for_scale() {
+  local count=$1
+  local url=http://rancher-metadata/latest/services/consul-server/containers/
+  while [ `curl -s $url | wc -l` -lt $count ]; do
+    echo "Waiting for remaining consul servers to come up..."
     sleep 10
   done
 }
@@ -60,21 +46,16 @@ force_cleanup() {
 reset_raft() {
   local peers=""
   if [ -f /data/raft/peers.json ]; then
-    peers=$(/bin/giddyup ip stringify --prefix '"' --suffix ':8300"')
+    peers=$(/bin/giddyup ip stringify --prefix '"' --suffix ':8300"' consul/consul-server)
     echo "[${peers}]" > /data/raft/peers.json
   fi
 }
 
 if [[ $ACTION == "server" ]]; then
-  JOIN_CMD=$(/bin/giddyup ip stringify --delimiter " " --prefix "--join ")
-  CONSUL_CMD="${CONSUL_CMD} -server -ui-dir=/ui -bootstrap-expect ${SERVER_COUNT} -rejoin ${JOIN_CMD}"
-
-  if ! check_servers && ! /bin/giddyup leader check; then
-    "Waiting for bootstrap server to come up..."
-    wait_for_server
-  else
-    echo "Joining existing cluster with '${SERVERS}'..."
-  fi
+  echo "Ensuring all consul-server containers are up (expecting ${SCALE})..."
+  wait_for_scale $SCALE
+  JOIN_CMD=$(/bin/giddyup ip stringify --delimiter ' ' --prefix '--join ' consul/consul-server)
+  CONSUL_CMD="${CONSUL_CMD} -server -ui-dir=/ui -bootstrap-expect 3 -rejoin ${JOIN_CMD}"
   echo "Backgrounding force-leave cleanup task..."
   force_cleanup &
   echo "Resetting raft peers..."
@@ -87,6 +68,7 @@ else
   reset_raft
 fi
 
+echo "Joining cluster with '${SERVERS}'..."
 echo "Starting consul as '${ACTION}' with command:"
 echo "  ${CONSUL_CMD}"
 exec $CONSUL_CMD
